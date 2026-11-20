@@ -470,6 +470,9 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script>
+        // 🛑 MASUKKAN URL WEB APP GOOGLE APPS SCRIPT KAMU DI SINI:
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH7rI2i0lDo9QeDQEF5g08hXcrdPQlPOQl185qK-QIdFIMxzXx6ov79y91k6hYsJQg/exec";
+
         function createFallingEffects() {
             const container = document.getElementById('fallingContainer');
             const heartColors = ['#fb7185', '#f43f5e', '#d4af37', '#ea899a', '#ffccd5'];
@@ -528,6 +531,7 @@
         window.addEventListener('DOMContentLoaded', () => {
             createFallingEffects();
             startCountdown();
+            loadWishes(); // Ambil data ucapan dari Google Sheets saat halaman dibuka
 
             // Membaca Nama Tamu dari URL (Contoh: ?to=Budi%20Santoso)
             const urlParams = new URLSearchParams(window.location.search);
@@ -538,6 +542,39 @@
                 document.getElementById('guestNameInput').value = guestName;
             }
         });
+
+        // Fungsi Mengambil Daftar Ucapan dari Google Sheets
+        function loadWishes() {
+            if (SCRIPT_URL.includes("MASUKKAN_URL")) return; // Lewati jika URL belum diisi
+            
+            fetch(SCRIPT_URL)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('wishesContainer');
+                    const wishCountEl = document.getElementById('wishCount');
+                    container.innerHTML = ""; // Bersihkan kontestan statis
+                    wishCountEl.innerText = data.length;
+
+                    data.forEach(item => {
+                        const badgeColor = item.kehadiran === 'Hadir' 
+                            ? 'bg-rose-100 text-rose-800' 
+                            : (item.kehadiran === 'Ragu' ? 'bg-sand-100 text-sand-800' : 'bg-stone-100 text-stone-800');
+
+                        const wishItem = document.createElement('div');
+                        wishItem.className = 'p-4 bg-white/90 rounded-xl border border-stone-100 shadow-sm space-y-1';
+                        wishItem.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold text-stone-800">${escapeHtml(item.nama)}</span>
+                                <span class="text-[10px] ${badgeColor} px-2 py-0.5 rounded-full font-medium">${escapeHtml(item.kehadiran)}</span>
+                            </div>
+                            <p class="text-xs text-stone-600 leading-relaxed">${escapeHtml(item.ucapan)}</p>
+                            <span class="text-[9px] text-stone-400 block pt-1">${formatDate(item.waktu)}</span>
+                        `;
+                        container.appendChild(wishItem);
+                    });
+                })
+                .catch(error => console.log("Gagal memuat ucapan:", error));
+        }
 
         // Kontrol Musik Otomatis (Tanpa Tombol Melayang)
         const bgMusic = document.getElementById('bgMusic');
@@ -552,35 +589,63 @@
             });
         }
 
+        // Fungsi Mengirim RSVP & Ucapan ke Google Sheets
         function handleRSVP(e) {
             e.preventDefault();
             const name = document.getElementById('guestNameInput').value;
             const attendance = document.getElementById('attendanceInput').value;
             const message = document.getElementById('messageInput').value;
 
-            const badgeColor = attendance === 'Hadir' 
-                ? 'bg-rose-100 text-rose-800' 
-                : (attendance === 'Ragu' ? 'bg-sand-100 text-sand-800' : 'bg-stone-100 text-stone-800');
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.innerText = "Mengirim...";
+            submitBtn.disabled = true;
 
-            const container = document.getElementById('wishesContainer');
-            const wishCountEl = document.getElementById('wishCount');
-            
-            const newWish = document.createElement('div');
-            newWish.className = 'p-4 bg-white/90 rounded-xl border border-stone-100 shadow-sm space-y-1';
-            newWish.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <span class="text-xs font-bold text-stone-800">${name}</span>
-                    <span class="text-[10px] ${badgeColor} px-2 py-0.5 rounded-full font-medium">${attendance}</span>
-                </div>
-                <p class="text-xs text-stone-600 leading-relaxed">${message}</p>
-                <span class="text-[9px] text-stone-400 block pt-1">Baru saja</span>
-            `;
+            const formData = {
+                nama: name,
+                kehadiran: attendance,
+                ucapan: message
+            };
 
-            container.prepend(newWish);
-            wishCountEl.innerText = parseInt(wishCountEl.innerText) + 1;
-            
-            document.getElementById('rsvpForm').reset();
-            showToast("Ucapan & konfirmasi Anda berhasil dikirim!");
+            if (SCRIPT_URL.includes("MASUKKAN_URL")) {
+                alert("URL Google Apps Script belum dimasukkan di dalam kodenya!");
+                submitBtn.innerText = "Kirim Ucapan & Konfirmasi";
+                submitBtn.disabled = false;
+                return;
+            }
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
+            .then(() => {
+                showToast("Ucapan & konfirmasi Anda berhasil dikirim!");
+                document.getElementById('rsvpForm').reset();
+                submitBtn.innerText = "Kirim Ucapan & Konfirmasi";
+                submitBtn.disabled = false;
+                
+                // Muat ulang daftar ucapan setelah 1 detik agar ucapan baru langsung muncul
+                setTimeout(loadWishes, 1000);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast("Gagal mengirim ucapan. Coba lagi.");
+                submitBtn.innerText = "Kirim Ucapan & Konfirmasi";
+                submitBtn.disabled = false;
+            });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'Baru saja';
+            const d = new Date(dateString);
+            if (isNaN(d)) return 'Baru saja';
+            return d.toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
         }
 
         function showToast(msg) {
